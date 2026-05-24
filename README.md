@@ -2,6 +2,8 @@
 
 By Raman Kumar
 
+🟢 **Live Project URL:** [https://frontend-rosy-seven-25.vercel.app](https://frontend-rosy-seven-25.vercel.app)
+
 A Spring Boot 3 web application that lets users track income, expenses, savings goals, and generate financial reports.
 
 ## Tech Stack
