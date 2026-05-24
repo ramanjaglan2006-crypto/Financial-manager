@@ -1,5 +1,5 @@
 let currentMode = 'login'; // 'login' or 'register'
-const API_BASE = '/api';
+const API_BASE = 'https://personal-finance-manager-7jbx.onrender.com/api';
 
 // UI Elements
 const authView = document.getElementById('auth-view');
