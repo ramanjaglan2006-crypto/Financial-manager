@@ -1,15 +1,13 @@
-# Build stage
-FROM maven:3.9-eclipse-temurin-17 AS build
+FROM eclipse-temurin:17-jdk-jammy AS builder
 WORKDIR /app
-COPY pom.xml .
-RUN mvn -q -B -DskipTests dependency:go-offline
+COPY .mvn/ .mvn/
+COPY mvnw pom.xml ./
+RUN ./mvnw dependency:go-offline -B
 COPY src ./src
-RUN mvn -q -B -DskipTests package
+RUN ./mvnw clean package -DskipTests
 
-# Run stage
-FROM eclipse-temurin:17-jre
+FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
-COPY --from=build /app/target/personal-finance-manager-*.jar app.jar
+COPY --from=builder /app/target/*.jar app.jar
 EXPOSE 8080
-ENV JAVA_OPTS=""
-ENTRYPOINT ["sh","-c","java $JAVA_OPTS -jar app.jar"]
+ENTRYPOINT ["java", "-jar", "app.jar"]

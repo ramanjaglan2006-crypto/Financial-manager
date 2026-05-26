@@ -1,108 +1,68 @@
-# Personal Finance Manager
+# Personal Finance Manager API
 
-By Raman Kumar
+A complete, production-grade REST API for managing personal finances. Built using Spring Boot 3, Java 17, Spring Security, Spring Data JPA, and H2 database.
 
-🟢 **Live Project URL:** [https://frontend-rosy-seven-25.vercel.app](https://frontend-rosy-seven-25.vercel.app)
+## Features
 
-A Spring Boot 3 web application that lets users track income, expenses, savings goals, and generate financial reports.
-
-## Tech Stack
-
-- Java 17
-- Spring Boot 3.2 (Web, Data JPA, Security, Validation)
-- H2 in-memory database
-- JUnit 5 + Spring Security Test (JaCoCo for coverage)
-- Maven
+- **User Authentication**: Secure session-based authentication using HTTP-only cookies and BCrypt password hashing.
+- **Transaction Management**: Track income and expenses with detailed categorizations.
+- **Category Management**: System defaults (Salary, Rent, etc.) and custom user-defined categories.
+- **Savings Goals**: Track savings goals with progress calculations over time.
+- **Reporting**: Generate monthly and yearly financial reports.
 
 ## Architecture
 
-Layered: `Controller` → `Service` → `Repository`, with DTOs at the API boundary and JPA entities at the persistence layer.
+This project follows a strict layered architecture:
+- `Controller Layer`: Exposes REST endpoints, validates input, handles session context.
+- `Service Layer`: Contains pure business logic.
+- `Repository Layer`: Interfaces with the database using Spring Data JPA.
+- `DTO Pattern`: Strictly decouples API contracts from database entities using Java Records.
+- `Global Exception Handling`: Uses `@ControllerAdvice` for unified JSON error structures.
 
-```
-src/main/java/com/financemanager
-├── PersonalFinanceManagerApplication.java
-├── config/        # CommandLineRunner seeding default categories
-├── controller/    # REST endpoints (auth, transactions, categories, goals, reports)
-├── dto/           # Request/response DTOs with bean validation
-├── entity/        # JPA entities: User, Category, Transaction, SavingsGoal
-├── exception/     # Custom exceptions + @ControllerAdvice handler
-├── repository/    # Spring Data JPA repositories
-├── security/      # Security config, AuthN entry points, current-user helper
-└── service/       # Business logic
-```
+## Requirements
 
-Authentication is session-based using a `JSESSIONID` (renamed `FMSESSIONID` in production) HTTP-only cookie. All `/api/**` endpoints (except `register` and `login`) require an authenticated session.
+- Java 17+
+- Maven 3.8+
 
-## Running locally
+## Setup & Run
 
-```bash
-# build & run unit tests
-mvn clean test
+1. **Clone the repository**:
+   ```bash
+   git clone <repo-url>
+   cd financial_sys_manager-main
+   ```
 
-# run the app
-mvn spring-boot:run
-```
+2. **Run using Maven**:
+   ```bash
+   ./mvnw spring-boot:run
+   ```
 
-The API is then served at `http://localhost:8080/api/...`. Default categories are seeded on first start.
+3. **Run using Docker**:
+   ```bash
+   docker build -t finance-manager .
+   docker run -p 8080:8080 finance-manager
+   ```
 
-## Test coverage
+## API Documentation
 
-`mvn test` produces a JaCoCo report under `target/site/jacoco/index.html`.
+Once the application is running, Swagger UI is available at:
+`http://localhost:8080/swagger-ui.html`
 
-## Deploying to Render
+OpenAPI specification JSON:
+`http://localhost:8080/api-docs`
 
-The repo includes a `Dockerfile` and `render.yaml`. On Render:
+H2 Database Console:
+`http://localhost:8080/h2-console`
+- **JDBC URL**: `jdbc:h2:mem:financedb`
+- **Username**: `sa`
+- **Password**: `password`
 
-1. Create a new **Web Service** from this repo.
-2. Choose **Docker** as the runtime (Render will pick up `Dockerfile`).
-3. Render injects `PORT`; the app already binds to `${PORT:8080}`.
+## Deployment
 
-## API Summary
+The application is configured to run on Render or similar platforms out-of-the-box using the provided Dockerfile. 
 
-### Auth
-- `POST /api/auth/register` — body: `{username,password,fullName,phoneNumber}`
-- `POST /api/auth/login` — body: `{username,password}` — sets session cookie
-- `POST /api/auth/logout` — invalidates session
-
-### Transactions
-- `POST   /api/transactions` — body: `{amount,date,category,description?}`
-- `GET    /api/transactions?startDate&endDate&categoryId`
-- `PUT    /api/transactions/{id}` — body: `{amount?,category?,description?}`
-- `DELETE /api/transactions/{id}`
-
-### Categories
-- `GET    /api/categories`
-- `POST   /api/categories` — body: `{name,type}` (type = INCOME | EXPENSE)
-- `DELETE /api/categories/{name}` — only for custom categories
-
-### Savings Goals
-- `POST   /api/goals` — body: `{goalName,targetAmount,targetDate,startDate?}`
-- `GET    /api/goals`
-- `GET    /api/goals/{id}`
-- `PUT    /api/goals/{id}` — body: `{targetAmount?,targetDate?}`
-- `DELETE /api/goals/{id}`
-
-### Reports
-- `GET /api/reports/monthly/{year}/{month}`
-- `GET /api/reports/yearly/{year}`
-
-### Error Format
-
-All errors return JSON: `{ "message": "<description>" }` with HTTP status:
-
-| Status | Meaning |
-|--------|---------|
-| 400 | Validation / malformed input |
-| 401 | Missing or invalid auth |
-| 403 | Accessing data you don't own |
-| 404 | Resource not found |
-| 409 | Conflict (e.g. duplicate username/category) |
-
-## Design Decisions
-
-- **Default categories** are stored in the DB with `user = null` and a seeder fills them on startup.
-- **Categories are name-scoped per user**; defaults are visible globally. Custom names are unique per user and cannot collide with defaults.
-- **Transactions** cannot be created with a future date, and the `date` field is immutable on update.
-- **Savings goal progress** is computed lazily as `sum(income) - sum(expenses)` between `startDate` and `min(today, targetDate)`. Deleting a transaction removes its contribution.
-- **Data isolation** is enforced in the repository layer: queries always include the current user.
-- **Errors** flow through a `@ControllerAdvice` global handler so no 5xx leaks for known scenarios.
+Make sure to override environment variables for a real PostgreSQL database in a production environment:
+- `SPRING_DATASOURCE_URL`
+- `SPRING_DATASOURCE_USERNAME`
+- `SPRING_DATASOURCE_PASSWORD`
+- `SERVER_SERVLET_SESSION_COOKIE_SECURE=true`

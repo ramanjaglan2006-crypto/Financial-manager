@@ -4,20 +4,24 @@
   <meta charset="UTF-8" />
   <link rel="icon" type="image/svg+xml" href="/vite.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Financial Manager Pro</title>
+  <title>Finance Pro — Personal Finance Manager</title>
+  <meta name="description" content="Track income, expenses, savings goals and monthly reports in one place." />
   <link rel="stylesheet" href="./style.css">
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
+  <!-- Background blobs -->
   <div class="blob blob-1"></div>
   <div class="blob blob-2"></div>
-  
+  <div class="blob blob-3"></div>
+
   <div id="app-container">
-    <!-- Login/Register View -->
+
+    <!-- ══════════════════════════════ LOGIN / REGISTER ══════════════════════════════ -->
     <div id="auth-view" class="view glass-panel active">
       <h1 class="glow-text">Finance Pro</h1>
-      <p class="subtitle">Master your wealth today.</p>
-      
+      <p class="subtitle">Master your wealth. Every rupee counts.</p>
+
       <div class="tabs">
         <button id="tab-login" class="active">Login</button>
         <button id="tab-register">Register</button>
@@ -33,7 +37,7 @@
           </div>
         </div>
         <div class="input-group">
-          <input type="text" id="auth-username" placeholder="Username" required />
+          <input type="text" id="auth-username" placeholder="Email / Username" required />
         </div>
         <div class="input-group">
           <input type="password" id="auth-password" placeholder="Password" required />
@@ -43,47 +47,99 @@
       <div id="auth-error" class="error-msg"></div>
     </div>
 
-    <!-- Main Dashboard View -->
+    <!-- ══════════════════════════════ DASHBOARD ══════════════════════════════ -->
     <div id="dashboard-view" class="view glass-panel" style="display: none;">
       <header class="dash-header">
         <h2 class="glow-text">Dashboard</h2>
         <button id="btn-logout" class="btn-outline">Logout</button>
       </header>
-      
+
+      <!-- Stat Cards -->
       <div class="stats-grid">
+
+        <!-- Total Balance -->
         <div class="stat-card">
-          <h3>Total Balance</h3>
-          <p id="total-balance">$0.00</p>
+          <div class="stat-card-header">
+            <h3>Total Balance</h3>
+          </div>
+          <p id="total-balance" class="balance-color">₹0.00</p>
         </div>
-        <div class="stat-card">
-          <h3>Monthly Income</h3>
-          <p id="monthly-income" class="positive">+$0.00</p>
+
+        <!-- Monthly Income — CLICKABLE -->
+        <div class="stat-card clickable" id="card-income" title="Click to add income">
+          <div class="stat-card-header">
+            <h3>Monthly Income</h3>
+            <span class="add-badge">+ ADD</span>
+          </div>
+          <p id="monthly-income" class="positive">+₹0.00</p>
+          <div class="stat-hint">Click to add income quickly</div>
         </div>
-        <div class="stat-card">
-          <h3>Monthly Expenses</h3>
-          <p id="monthly-expense" class="negative">-$0.00</p>
+
+        <!-- Monthly Expenses — CLICKABLE -->
+        <div class="stat-card clickable" id="card-expense" title="Click to add expense">
+          <div class="stat-card-header">
+            <h3>Monthly Expenses</h3>
+            <span class="add-badge" style="color:#ff4f6a;background:rgba(255,79,106,0.12);border-color:rgba(255,79,106,0.2);">+ ADD</span>
+          </div>
+          <p id="monthly-expense" class="negative">-₹0.00</p>
+          <div class="stat-hint">Click to add expense quickly</div>
         </div>
+
       </div>
 
+      <!-- Main Content -->
       <div class="content-split">
+        <!-- Transactions list -->
         <div class="transactions-panel">
           <h3>Recent Transactions</h3>
           <ul id="transaction-list" class="transaction-list">
-            <li class="loading">Loading...</li>
+            <li class="loading" style="color:var(--text-muted);text-align:center;padding:20px;">Loading...</li>
           </ul>
         </div>
+
+        <!-- Add Transaction form -->
         <div class="actions-panel">
           <h3>Add Transaction</h3>
           <form id="tx-form">
-            <input type="number" id="tx-amount" placeholder="Amount" step="0.01" required>
+            <input type="number" id="tx-amount" placeholder="Amount (₹)" step="0.01" min="0.01" required>
             <input type="date" id="tx-date" required>
             <select id="tx-category" required>
               <option value="" disabled selected>Category</option>
             </select>
             <input type="text" id="tx-desc" placeholder="Description (Optional)">
-            <button type="submit" class="btn-primary">Add</button>
+            <button type="submit" class="btn-primary" id="btn-add-tx">Add Transaction</button>
           </form>
         </div>
+      </div>
+    </div>
+
+  </div><!-- /#app-container -->
+
+  <!-- ══════════════════════════════ ADD MONEY MODAL ══════════════════════════════ -->
+  <div id="modal-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-box">
+      <button class="modal-close" id="modal-close-btn" aria-label="Close">✕</button>
+      <h3 id="modal-title">Add Income</h3>
+      <p class="modal-subtitle" id="modal-subtitle">Select a category and enter the amount</p>
+
+      <div class="modal-form">
+        <!-- Category chips -->
+        <div id="modal-category-grid" class="modal-category-grid"></div>
+
+        <!-- Amount + Date -->
+        <div class="modal-amount-row">
+          <input type="number" id="modal-amount" placeholder="Amount (₹)" step="0.01" min="0.01" />
+          <input type="date" id="modal-date" />
+        </div>
+
+        <!-- Description -->
+        <input type="text" id="modal-desc" placeholder="Description (Optional)" />
+
+        <!-- Error -->
+        <div id="modal-error" class="modal-error"></div>
+
+        <!-- Submit -->
+        <button class="btn-modal-submit" id="modal-submit-btn">Add Money</button>
       </div>
     </div>
   </div>

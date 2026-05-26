@@ -4,102 +4,116 @@ import com.financemanager.dto.TransactionRequest;
 import com.financemanager.dto.TransactionResponse;
 import com.financemanager.dto.TransactionUpdateRequest;
 import com.financemanager.entity.Category;
+import com.financemanager.entity.CategoryType;
 import com.financemanager.entity.Transaction;
 import com.financemanager.entity.User;
 import com.financemanager.exception.BadRequestException;
 import com.financemanager.exception.NotFoundException;
 import com.financemanager.repository.TransactionRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class TransactionService {
 
     private final TransactionRepository transactionRepository;
     private final CategoryService categoryService;
+    private final UserService userService;
 
-    public TransactionService(TransactionRepository transactionRepository,
-                              CategoryService categoryService) {
-        this.transactionRepository = transactionRepository;
-        this.categoryService = categoryService;
+    public List<TransactionResponse> getTransactions(Long userId, LocalDate startDate, LocalDate endDate, String categoryName, CategoryType type) {
+        Sort sort = Sort.by(Sort.Direction.DESC, "date");
+        List<Transaction> transactions = transactionRepository.findFilteredTransactions(userId, startDate, endDate, categoryName, type, sort);
+        return transactions.stream().map(this::mapToResponse).collect(Collectors.toList());
     }
 
     @Transactional
-    public TransactionResponse create(User user, TransactionRequest request) {
-        if (request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BadRequestException("Amount must be positive");
+    @Caching(evict = {
+        @CacheEvict(value = "reports", allEntries = true),
+        @CacheEvict(value = "goals", key = "#userId")
+    })
+    public TransactionResponse createTransaction(Long userId, TransactionRequest request) {
+        if (request.date().isAfter(LocalDate.now())) {
+            throw new BadRequestException("Transaction date cannot be in the future");
         }
-        if (request.getDate() == null) {
-            throw new BadRequestException("Date is required");
-        }
-        if (request.getDate().isAfter(LocalDate.now())) {
-            throw new BadRequestException("Date cannot be a future date");
-        }
-        Category category = categoryService.resolveCategory(user, request.getCategory());
 
-        Transaction tx = new Transaction();
-        tx.setAmount(request.getAmount());
-        tx.setDate(request.getDate());
-        tx.setCategory(category);
-        tx.setDescription(request.getDescription());
-        tx.setUser(user);
-        Transaction saved = transactionRepository.save(tx);
-        return toResponse(saved);
-    }
+        User user = userService.findUserEntityById(userId);
+        Category category = categoryService.findCategoryByNameAndUserId(request.categoryName(), userId);
 
-    public List<TransactionResponse> list(User user, LocalDate startDate, LocalDate endDate, Long categoryId) {
-        List<Transaction> all = transactionRepository.findByUserOrderByDateDescIdDesc(user);
-        List<TransactionResponse> out = new ArrayList<>();
-        for (Transaction t : all) {
-            if (startDate != null && t.getDate().isBefore(startDate)) continue;
-            if (endDate != null && t.getDate().isAfter(endDate)) continue;
-            if (categoryId != null && !categoryId.equals(t.getCategory().getId())) continue;
-            out.add(toResponse(t));
+        if (category.getType() != request.type()) {
+            throw new BadRequestException("Category type does not match transaction type");
         }
-        return out;
+
+        Transaction transaction = Transaction.builder()
+                .amount(request.amount())
+                .date(request.date())
+                .category(category)
+                .description(request.description())
+                .type(request.type())
+                .user(user)
+                .build();
+
+        transaction = transactionRepository.save(transaction);
+        return mapToResponse(transaction);
     }
 
     @Transactional
-    public TransactionResponse update(User user, Long id, TransactionUpdateRequest request) {
-        Transaction tx = transactionRepository.findByIdAndUser(id, user)
+    @Caching(evict = {
+        @CacheEvict(value = "reports", allEntries = true),
+        @CacheEvict(value = "goals", key = "#userId")
+    })
+    public TransactionResponse updateTransaction(Long userId, Long transactionId, TransactionUpdateRequest request) {
+        Transaction transaction = transactionRepository.findByIdAndUserId(transactionId, userId)
                 .orElseThrow(() -> new NotFoundException("Transaction not found"));
 
-        if (request.getAmount() != null) {
-            if (request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
-                throw new BadRequestException("Amount must be positive");
+        if (request.amount() != null) {
+            transaction.setAmount(request.amount());
+        }
+        if (request.description() != null) {
+            transaction.setDescription(request.description());
+        }
+        if (request.type() != null) {
+            transaction.setType(request.type());
+        }
+        if (request.categoryName() != null) {
+            Category category = categoryService.findCategoryByNameAndUserId(request.categoryName(), userId);
+            if (category.getType() != transaction.getType()) {
+                throw new BadRequestException("Category type does not match transaction type");
             }
-            tx.setAmount(request.getAmount());
+            transaction.setCategory(category);
         }
-        if (request.getCategory() != null) {
-            Category category = categoryService.resolveCategory(user, request.getCategory());
-            tx.setCategory(category);
-        }
-        if (request.getDescription() != null) {
-            tx.setDescription(request.getDescription());
-        }
-        return toResponse(tx);
+
+        transaction = transactionRepository.save(transaction);
+        return mapToResponse(transaction);
     }
 
     @Transactional
-    public void delete(User user, Long id) {
-        Transaction tx = transactionRepository.findByIdAndUser(id, user)
+    @Caching(evict = {
+        @CacheEvict(value = "reports", allEntries = true),
+        @CacheEvict(value = "goals", key = "#userId")
+    })
+    public void deleteTransaction(Long userId, Long transactionId) {
+        Transaction transaction = transactionRepository.findByIdAndUserId(transactionId, userId)
                 .orElseThrow(() -> new NotFoundException("Transaction not found"));
-        transactionRepository.delete(tx);
+        transactionRepository.delete(transaction);
     }
 
-    public TransactionResponse toResponse(Transaction t) {
+    private TransactionResponse mapToResponse(Transaction transaction) {
         return new TransactionResponse(
-                t.getId(),
-                t.getAmount(),
-                t.getDate(),
-                t.getCategory().getName(),
-                t.getDescription(),
-                t.getCategory().getType().name()
+                transaction.getId(),
+                transaction.getAmount(),
+                transaction.getDate(),
+                transaction.getCategory().getName(),
+                transaction.getDescription(),
+                transaction.getType()
         );
     }
 }

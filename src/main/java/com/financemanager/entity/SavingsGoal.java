@@ -1,13 +1,22 @@
 package com.financemanager.entity;
 
 import jakarta.persistence.*;
+import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Entity
-@Table(name = "savings_goals")
+@Table(name = "savings_goals", indexes = {
+    @Index(name = "idx_savingsgoal_user", columnList = "user_id")
+})
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class SavingsGoal {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -15,7 +24,7 @@ public class SavingsGoal {
     @Column(nullable = false)
     private String goalName;
 
-    @Column(nullable = false, precision = 19, scale = 2)
+    @Column(nullable = false)
     private BigDecimal targetAmount;
 
     @Column(nullable = false)
@@ -27,19 +36,4 @@ public class SavingsGoal {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
-
-    public SavingsGoal() {}
-
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    public String getGoalName() { return goalName; }
-    public void setGoalName(String goalName) { this.goalName = goalName; }
-    public BigDecimal getTargetAmount() { return targetAmount; }
-    public void setTargetAmount(BigDecimal targetAmount) { this.targetAmount = targetAmount; }
-    public LocalDate getTargetDate() { return targetDate; }
-    public void setTargetDate(LocalDate targetDate) { this.targetDate = targetDate; }
-    public LocalDate getStartDate() { return startDate; }
-    public void setStartDate(LocalDate startDate) { this.startDate = startDate; }
-    public User getUser() { return user; }
-    public void setUser(User user) { this.user = user; }
 }

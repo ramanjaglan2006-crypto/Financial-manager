@@ -2,75 +2,60 @@ package com.financemanager.service;
 
 import com.financemanager.dto.ReportResponse;
 import com.financemanager.entity.CategoryType;
-import com.financemanager.entity.Transaction;
-import com.financemanager.entity.User;
-import com.financemanager.exception.BadRequestException;
 import com.financemanager.repository.TransactionRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import org.springframework.cache.annotation.Cacheable;
+
 import java.math.BigDecimal;
-import java.time.DateTimeException;
-import java.time.LocalDate;
-import java.time.YearMonth;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 @Service
+@RequiredArgsConstructor
 public class ReportService {
 
     private final TransactionRepository transactionRepository;
 
-    public ReportService(TransactionRepository transactionRepository) {
-        this.transactionRepository = transactionRepository;
+    @Cacheable(value = "reports", key = "#userId + '-' + #year + '-' + #month")
+    public ReportResponse getMonthlyReport(Long userId, int year, int month) {
+        List<Object[]> incomeAgg = transactionRepository.aggregateMonthlyByCategory(userId, year, month, CategoryType.INCOME);
+        List<Object[]> expenseAgg = transactionRepository.aggregateMonthlyByCategory(userId, year, month, CategoryType.EXPENSE);
+        
+        return buildReportResponse(incomeAgg, expenseAgg);
     }
 
-    public ReportResponse monthlyReport(User user, int year, int month) {
-        YearMonth ym;
-        try {
-            ym = YearMonth.of(year, month);
-        } catch (DateTimeException e) {
-            throw new BadRequestException("Invalid year or month");
-        }
-        LocalDate start = ym.atDay(1);
-        LocalDate end = ym.atEndOfMonth();
-        ReportResponse report = build(user, start, end);
-        report.setMonth(month);
-        report.setYear(year);
-        return report;
+    @Cacheable(value = "reports", key = "#userId + '-' + #year")
+    public ReportResponse getYearlyReport(Long userId, int year) {
+        List<Object[]> incomeAgg = transactionRepository.aggregateYearlyByCategory(userId, year, CategoryType.INCOME);
+        List<Object[]> expenseAgg = transactionRepository.aggregateYearlyByCategory(userId, year, CategoryType.EXPENSE);
+
+        return buildReportResponse(incomeAgg, expenseAgg);
     }
 
-    public ReportResponse yearlyReport(User user, int year) {
-        if (year < 1) {
-            throw new BadRequestException("Invalid year");
-        }
-        LocalDate start = LocalDate.of(year, 1, 1);
-        LocalDate end = LocalDate.of(year, 12, 31);
-        ReportResponse report = build(user, start, end);
-        report.setYear(year);
-        return report;
-    }
-
-    private ReportResponse build(User user, LocalDate start, LocalDate end) {
-        List<Transaction> txs = transactionRepository.findByUserAndDateRange(user, start, end);
-        Map<String, BigDecimal> income = new LinkedHashMap<>();
-        Map<String, BigDecimal> expense = new LinkedHashMap<>();
+    private ReportResponse buildReportResponse(List<Object[]> incomeAgg, List<Object[]> expenseAgg) {
+        Map<String, BigDecimal> incomeByCategory = new HashMap<>();
         BigDecimal totalIncome = BigDecimal.ZERO;
-        BigDecimal totalExpense = BigDecimal.ZERO;
-        for (Transaction t : txs) {
-            String name = t.getCategory().getName();
-            if (t.getCategory().getType() == CategoryType.INCOME) {
-                income.merge(name, t.getAmount(), BigDecimal::add);
-                totalIncome = totalIncome.add(t.getAmount());
-            } else {
-                expense.merge(name, t.getAmount(), BigDecimal::add);
-                totalExpense = totalExpense.add(t.getAmount());
-            }
+        for (Object[] row : incomeAgg) {
+            String category = (String) row[0];
+            BigDecimal amount = (BigDecimal) row[1];
+            incomeByCategory.put(category, amount);
+            totalIncome = totalIncome.add(amount);
         }
-        ReportResponse resp = new ReportResponse();
-        resp.setTotalIncome(income);
-        resp.setTotalExpenses(expense);
-        resp.setNetSavings(totalIncome.subtract(totalExpense));
-        return resp;
+
+        Map<String, BigDecimal> expenseByCategory = new HashMap<>();
+        BigDecimal totalExpense = BigDecimal.ZERO;
+        for (Object[] row : expenseAgg) {
+            String category = (String) row[0];
+            BigDecimal amount = (BigDecimal) row[1];
+            expenseByCategory.put(category, amount);
+            totalExpense = totalExpense.add(amount);
+        }
+
+        BigDecimal netSavings = totalIncome.subtract(totalExpense);
+
+        return new ReportResponse(incomeByCategory, expenseByCategory, totalIncome, totalExpense, netSavings);
     }
 }

@@ -3,137 +3,128 @@ package com.financemanager.service;
 import com.financemanager.dto.SavingsGoalRequest;
 import com.financemanager.dto.SavingsGoalResponse;
 import com.financemanager.dto.SavingsGoalUpdateRequest;
-import com.financemanager.entity.CategoryType;
 import com.financemanager.entity.SavingsGoal;
-import com.financemanager.entity.Transaction;
 import com.financemanager.entity.User;
 import com.financemanager.exception.BadRequestException;
 import com.financemanager.exception.NotFoundException;
 import com.financemanager.repository.SavingsGoalRepository;
 import com.financemanager.repository.TransactionRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class SavingsGoalService {
 
-    private final SavingsGoalRepository goalRepository;
+    private final SavingsGoalRepository savingsGoalRepository;
     private final TransactionRepository transactionRepository;
+    private final UserService userService;
 
-    public SavingsGoalService(SavingsGoalRepository goalRepository,
-                              TransactionRepository transactionRepository) {
-        this.goalRepository = goalRepository;
-        this.transactionRepository = transactionRepository;
+    @Cacheable(value = "goals", key = "#userId")
+    public List<SavingsGoalResponse> getGoals(Long userId) {
+        return savingsGoalRepository.findByUserId(userId).stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    public SavingsGoalResponse getGoalById(Long userId, Long goalId) {
+        SavingsGoal goal = savingsGoalRepository.findByIdAndUserId(goalId, userId)
+                .orElseThrow(() -> new NotFoundException("Savings Goal not found"));
+        return mapToResponse(goal);
     }
 
     @Transactional
-    public SavingsGoalResponse create(User user, SavingsGoalRequest request) {
-        validateCreate(request);
-        SavingsGoal goal = new SavingsGoal();
-        goal.setGoalName(request.getGoalName());
-        goal.setTargetAmount(request.getTargetAmount());
-        goal.setTargetDate(request.getTargetDate());
-        goal.setStartDate(request.getStartDate() != null ? request.getStartDate() : LocalDate.now());
-        goal.setUser(user);
-        SavingsGoal saved = goalRepository.save(goal);
-        return toResponse(saved);
-    }
+    @CacheEvict(value = "goals", key = "#userId")
+    public SavingsGoalResponse createGoal(Long userId, SavingsGoalRequest request) {
+        if (request.targetDate().isBefore(request.startDate())) {
+            throw new BadRequestException("Target date must be after start date");
+        }
 
-    private void validateCreate(SavingsGoalRequest request) {
-        if (request.getGoalName() == null || request.getGoalName().isBlank()) {
-            throw new BadRequestException("Goal name is required");
-        }
-        if (request.getTargetAmount() == null || request.getTargetAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BadRequestException("Target amount must be positive");
-        }
-        if (request.getTargetDate() == null || !request.getTargetDate().isAfter(LocalDate.now())) {
-            throw new BadRequestException("Target date must be a future date");
-        }
-    }
+        User user = userService.findUserEntityById(userId);
 
-    public List<SavingsGoalResponse> list(User user) {
-        List<SavingsGoal> goals = goalRepository.findByUser(user);
-        List<SavingsGoalResponse> out = new ArrayList<>(goals.size());
-        for (SavingsGoal g : goals) {
-            out.add(toResponse(g));
-        }
-        return out;
-    }
+        SavingsGoal goal = SavingsGoal.builder()
+                .goalName(request.goalName())
+                .targetAmount(request.targetAmount())
+                .targetDate(request.targetDate())
+                .startDate(request.startDate())
+                .user(user)
+                .build();
 
-    public SavingsGoalResponse get(User user, Long id) {
-        SavingsGoal goal = goalRepository.findByIdAndUser(id, user)
-                .orElseThrow(() -> new NotFoundException("Savings goal not found"));
-        return toResponse(goal);
+        goal = savingsGoalRepository.save(goal);
+        return mapToResponse(goal);
     }
 
     @Transactional
-    public SavingsGoalResponse update(User user, Long id, SavingsGoalUpdateRequest request) {
-        SavingsGoal goal = goalRepository.findByIdAndUser(id, user)
-                .orElseThrow(() -> new NotFoundException("Savings goal not found"));
-        if (request.getTargetAmount() != null) {
-            if (request.getTargetAmount().compareTo(BigDecimal.ZERO) <= 0) {
-                throw new BadRequestException("Target amount must be positive");
-            }
-            goal.setTargetAmount(request.getTargetAmount());
+    @CacheEvict(value = "goals", key = "#userId")
+    public SavingsGoalResponse updateGoal(Long userId, Long goalId, SavingsGoalUpdateRequest request) {
+        SavingsGoal goal = savingsGoalRepository.findByIdAndUserId(goalId, userId)
+                .orElseThrow(() -> new NotFoundException("Savings Goal not found"));
+
+        if (request.goalName() != null) {
+            goal.setGoalName(request.goalName());
         }
-        if (request.getTargetDate() != null) {
-            if (!request.getTargetDate().isAfter(LocalDate.now())) {
-                throw new BadRequestException("Target date must be a future date");
-            }
-            goal.setTargetDate(request.getTargetDate());
+        if (request.targetAmount() != null) {
+            goal.setTargetAmount(request.targetAmount());
         }
-        return toResponse(goal);
+        if (request.targetDate() != null) {
+            if (request.targetDate().isBefore(goal.getStartDate())) {
+                throw new BadRequestException("Target date must be after start date");
+            }
+            goal.setTargetDate(request.targetDate());
+        }
+
+        goal = savingsGoalRepository.save(goal);
+        return mapToResponse(goal);
     }
 
     @Transactional
-    public void delete(User user, Long id) {
-        SavingsGoal goal = goalRepository.findByIdAndUser(id, user)
-                .orElseThrow(() -> new NotFoundException("Savings goal not found"));
-        goalRepository.delete(goal);
+    @CacheEvict(value = "goals", key = "#userId")
+    public void deleteGoal(Long userId, Long goalId) {
+        SavingsGoal goal = savingsGoalRepository.findByIdAndUserId(goalId, userId)
+                .orElseThrow(() -> new NotFoundException("Savings Goal not found"));
+        savingsGoalRepository.delete(goal);
     }
 
-    private SavingsGoalResponse toResponse(SavingsGoal goal) {
-        BigDecimal progress = calculateProgress(goal);
-        BigDecimal percentage = goal.getTargetAmount().compareTo(BigDecimal.ZERO) == 0
-                ? BigDecimal.ZERO
-                : progress.multiply(BigDecimal.valueOf(100))
-                        .divide(goal.getTargetAmount(), 2, RoundingMode.HALF_UP);
-        BigDecimal remaining = goal.getTargetAmount().subtract(progress);
-
-        SavingsGoalResponse resp = new SavingsGoalResponse();
-        resp.setId(goal.getId());
-        resp.setGoalName(goal.getGoalName());
-        resp.setTargetAmount(goal.getTargetAmount());
-        resp.setTargetDate(goal.getTargetDate());
-        resp.setStartDate(goal.getStartDate());
-        resp.setCurrentProgress(progress);
-        resp.setProgressPercentage(percentage);
-        resp.setRemainingAmount(remaining);
-        return resp;
-    }
-
-    private BigDecimal calculateProgress(SavingsGoal goal) {
-        LocalDate end = LocalDate.now().isAfter(goal.getTargetDate()) ? goal.getTargetDate() : LocalDate.now();
-        if (goal.getStartDate().isAfter(end)) {
-            return BigDecimal.ZERO;
+    private SavingsGoalResponse mapToResponse(SavingsGoal goal) {
+        BigDecimal totalIncome = transactionRepository.calculateTotalIncomeSince(goal.getUser().getId(), goal.getStartDate());
+        BigDecimal totalExpense = transactionRepository.calculateTotalExpenseSince(goal.getUser().getId(), goal.getStartDate());
+        
+        BigDecimal currentProgress = totalIncome.subtract(totalExpense);
+        if (currentProgress.compareTo(BigDecimal.ZERO) < 0) {
+            currentProgress = BigDecimal.ZERO;
         }
-        List<Transaction> txs = transactionRepository.findByUserAndDateRange(goal.getUser(),
-                goal.getStartDate(), end);
-        BigDecimal income = BigDecimal.ZERO;
-        BigDecimal expense = BigDecimal.ZERO;
-        for (Transaction t : txs) {
-            if (t.getCategory().getType() == CategoryType.INCOME) {
-                income = income.add(t.getAmount());
-            } else {
-                expense = expense.add(t.getAmount());
-            }
+
+        BigDecimal remainingAmount = goal.getTargetAmount().subtract(currentProgress);
+        if (remainingAmount.compareTo(BigDecimal.ZERO) < 0) {
+            remainingAmount = BigDecimal.ZERO;
         }
-        return income.subtract(expense);
+
+        double progressPercentage = 0.0;
+        if (goal.getTargetAmount().compareTo(BigDecimal.ZERO) > 0) {
+            progressPercentage = currentProgress.divide(goal.getTargetAmount(), 4, RoundingMode.HALF_UP)
+                    .multiply(new BigDecimal("100")).doubleValue();
+        }
+        
+        progressPercentage = Math.min(progressPercentage, 100.0);
+
+        return new SavingsGoalResponse(
+                goal.getId(),
+                goal.getGoalName(),
+                goal.getTargetAmount(),
+                goal.getTargetDate(),
+                goal.getStartDate(),
+                currentProgress,
+                remainingAmount,
+                progressPercentage
+        );
     }
 }

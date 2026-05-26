@@ -3,32 +3,37 @@ package com.financemanager.config;
 import com.financemanager.entity.Category;
 import com.financemanager.entity.CategoryType;
 import com.financemanager.repository.CategoryRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 
 @Component
+@RequiredArgsConstructor
 public class DataSeeder implements CommandLineRunner {
 
     private final CategoryRepository categoryRepository;
 
-    public DataSeeder(CategoryRepository categoryRepository) {
-        this.categoryRepository = categoryRepository;
-    }
-
     @Override
     public void run(String... args) {
-        if (categoryRepository.findByUserIsNull().isEmpty()) {
-            categoryRepository.saveAll(List.of(
-                    new Category("Salary", CategoryType.INCOME, false, null),
-                    new Category("Food", CategoryType.EXPENSE, false, null),
-                    new Category("Rent", CategoryType.EXPENSE, false, null),
-                    new Category("Transportation", CategoryType.EXPENSE, false, null),
-                    new Category("Entertainment", CategoryType.EXPENSE, false, null),
-                    new Category("Healthcare", CategoryType.EXPENSE, false, null),
-                    new Category("Utilities", CategoryType.EXPENSE, false, null)
-            ));
+        seedDefaultCategories();
+    }
+
+    private void seedDefaultCategories() {
+        List<String> expenseCategories = List.of("Food", "Rent", "Transportation", "Entertainment", "Healthcare", "Utilities");
+        List<String> incomeCategories = List.of("Salary", "Freelance", "Investment");
+
+        for (String name : expenseCategories) {
+            if (categoryRepository.findByNameAndIsDefaultTrue(name).isEmpty()) {
+                categoryRepository.save(Category.builder().name(name).type(CategoryType.EXPENSE).isDefault(true).build());
+            }
+        }
+
+        for (String name : incomeCategories) {
+            if (categoryRepository.findByNameAndIsDefaultTrue(name).isEmpty()) {
+                categoryRepository.save(Category.builder().name(name).type(CategoryType.INCOME).isDefault(true).build());
+            }
         }
     }
 }

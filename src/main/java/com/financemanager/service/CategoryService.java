@@ -4,84 +4,81 @@ import com.financemanager.dto.CategoryRequest;
 import com.financemanager.dto.CategoryResponse;
 import com.financemanager.entity.Category;
 import com.financemanager.entity.User;
-import com.financemanager.exception.BadRequestException;
 import com.financemanager.exception.ConflictException;
 import com.financemanager.exception.ForbiddenException;
 import com.financemanager.exception.NotFoundException;
 import com.financemanager.repository.CategoryRepository;
 import com.financemanager.repository.TransactionRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class CategoryService {
 
     private final CategoryRepository categoryRepository;
     private final TransactionRepository transactionRepository;
+    private final UserService userService;
 
-    public CategoryService(CategoryRepository categoryRepository,
-                           TransactionRepository transactionRepository) {
-        this.categoryRepository = categoryRepository;
-        this.transactionRepository = transactionRepository;
-    }
-
-    public List<CategoryResponse> listForUser(User user) {
-        List<Category> all = new ArrayList<>(categoryRepository.findDefaultsAndForUser(user));
-        all.sort(Comparator.comparing(Category::isCustom).thenComparing(Category::getName));
-        List<CategoryResponse> out = new ArrayList<>(all.size());
-        for (Category c : all) {
-            out.add(new CategoryResponse(c.getName(), c.getType(), c.isCustom()));
-        }
-        return out;
+    @Cacheable(value = "categories", key = "#userId")
+    public List<CategoryResponse> getCategories(Long userId) {
+        return categoryRepository.findByUserIdOrIsDefaultTrue(userId)
+                .stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
     }
 
     @Transactional
-    public CategoryResponse createCustomCategory(User user, CategoryRequest request) {
-        if (request.getName() == null || request.getName().isBlank()) {
-            throw new BadRequestException("Category name is required");
+    @CacheEvict(value = "categories", key = "#userId")
+    public CategoryResponse createCategory(Long userId, CategoryRequest request) {
+        if (categoryRepository.existsByNameAndUserId(request.name(), userId) || 
+            categoryRepository.findByNameAndIsDefaultTrue(request.name()).isPresent()) {
+            throw new ConflictException("Category with this name already exists");
         }
-        if (request.getType() == null) {
-            throw new BadRequestException("Category type is required");
-        }
-        if (categoryRepository.findByNameAndUserIsNull(request.getName()).isPresent()) {
-            throw new ConflictException("Category name conflicts with a default category");
-        }
-        if (categoryRepository.existsByNameAndUser(request.getName(), user)) {
-            throw new ConflictException("Custom category with this name already exists");
-        }
-        Category category = new Category(request.getName(), request.getType(), true, user);
-        Category saved = categoryRepository.save(category);
-        return new CategoryResponse(saved.getName(), saved.getType(), saved.isCustom());
+
+        User user = userService.findUserEntityById(userId);
+
+        Category category = Category.builder()
+                .name(request.name())
+                .type(request.type())
+                .user(user)
+                .isDefault(false)
+                .build();
+
+        category = categoryRepository.save(category);
+        return mapToResponse(category);
     }
 
     @Transactional
-    public void deleteCustomCategory(User user, String name) {
-        Optional<Category> defaultMatch = categoryRepository.findByNameAndUserIsNull(name);
-        if (defaultMatch.isPresent()) {
-            throw new ForbiddenException("Default categories cannot be deleted");
+    @CacheEvict(value = "categories", key = "#userId")
+    public void deleteCategory(Long userId, String name) {
+        Category category = categoryRepository.findByNameAndUserId(name, userId)
+                .orElseThrow(() -> new NotFoundException("Custom category not found or you don't have permission to delete it"));
+
+        if (category.isDefault()) {
+            throw new ForbiddenException("Cannot delete default categories");
         }
-        Category category = categoryRepository.findByNameAndUser(name, user)
-                .orElseThrow(() -> new NotFoundException("Category not found"));
-        if (transactionRepository.existsByCategory(category)) {
-            throw new BadRequestException("Category is referenced by transactions and cannot be deleted");
+
+        if (transactionRepository.existsByCategoryId(category.getId())) {
+            throw new ConflictException("Cannot delete category as it is linked to existing transactions");
         }
+
         categoryRepository.delete(category);
     }
 
-    /**
-     * Resolves a category by name for a user. Looks first at the user's custom categories then defaults.
-     */
-    public Category resolveCategory(User user, String name) {
-        if (name == null || name.isBlank()) {
-            throw new BadRequestException("Category is required");
-        }
-        return categoryRepository.findByNameAndUser(name, user)
-                .or(() -> categoryRepository.findByNameAndUserIsNull(name))
-                .orElseThrow(() -> new BadRequestException("Invalid category: " + name));
+    public Category findCategoryByNameAndUserId(String name, Long userId) {
+        return categoryRepository.findByNameAndUserId(name, userId)
+                .orElseGet(() -> categoryRepository.findByNameAndIsDefaultTrue(name)
+                        .orElseThrow(() -> new NotFoundException("Category not found: " + name)));
+    }
+
+    private CategoryResponse mapToResponse(Category category) {
+        return new CategoryResponse(category.getId(), category.getName(), category.getType(), category.isDefault());
     }
 }

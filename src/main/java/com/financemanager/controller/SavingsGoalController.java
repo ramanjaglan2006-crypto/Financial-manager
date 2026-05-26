@@ -1,61 +1,61 @@
 package com.financemanager.controller;
 
+import com.financemanager.dto.GenericResponse;
 import com.financemanager.dto.SavingsGoalRequest;
 import com.financemanager.dto.SavingsGoalResponse;
 import com.financemanager.dto.SavingsGoalUpdateRequest;
 import com.financemanager.security.CurrentUserProvider;
 import com.financemanager.service.SavingsGoalService;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/goals")
+@RequiredArgsConstructor
 public class SavingsGoalController {
 
-    private final SavingsGoalService goalService;
+    private final SavingsGoalService savingsGoalService;
     private final CurrentUserProvider currentUserProvider;
 
-    public SavingsGoalController(SavingsGoalService goalService, CurrentUserProvider currentUserProvider) {
-        this.goalService = goalService;
-        this.currentUserProvider = currentUserProvider;
-    }
-
     @PostMapping
-    public ResponseEntity<SavingsGoalResponse> create(@Valid @RequestBody SavingsGoalRequest request) {
-        SavingsGoalResponse response = goalService.create(currentUserProvider.getCurrentUser(), request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    public ResponseEntity<GenericResponse<SavingsGoalResponse>> createGoal(@Valid @RequestBody SavingsGoalRequest request) {
+        Long userId = currentUserProvider.getCurrentUserId();
+        SavingsGoalResponse goal = savingsGoalService.createGoal(userId, request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(GenericResponse.success(goal, "Savings goal created successfully"));
     }
 
     @GetMapping
-    public ResponseEntity<Map<String, Object>> list() {
-        List<SavingsGoalResponse> goals = goalService.list(currentUserProvider.getCurrentUser());
-        Map<String, Object> body = new HashMap<>();
-        body.put("goals", goals);
-        return ResponseEntity.ok(body);
+    public ResponseEntity<GenericResponse<List<SavingsGoalResponse>>> getGoals() {
+        Long userId = currentUserProvider.getCurrentUserId();
+        List<SavingsGoalResponse> goals = savingsGoalService.getGoals(userId);
+        return ResponseEntity.ok(GenericResponse.success(goals, "Savings goals fetched successfully"));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<SavingsGoalResponse> get(@PathVariable Long id) {
-        return ResponseEntity.ok(goalService.get(currentUserProvider.getCurrentUser(), id));
+    public ResponseEntity<GenericResponse<SavingsGoalResponse>> getGoalById(@PathVariable Long id) {
+        Long userId = currentUserProvider.getCurrentUserId();
+        SavingsGoalResponse goal = savingsGoalService.getGoalById(userId, id);
+        return ResponseEntity.ok(GenericResponse.success(goal, "Savings goal fetched successfully"));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<SavingsGoalResponse> update(@PathVariable Long id,
-                                                      @Valid @RequestBody SavingsGoalUpdateRequest request) {
-        return ResponseEntity.ok(goalService.update(currentUserProvider.getCurrentUser(), id, request));
+    public ResponseEntity<GenericResponse<SavingsGoalResponse>> updateGoal(
+            @PathVariable Long id, @Valid @RequestBody SavingsGoalUpdateRequest request) {
+        Long userId = currentUserProvider.getCurrentUserId();
+        SavingsGoalResponse goal = savingsGoalService.updateGoal(userId, id, request);
+        return ResponseEntity.ok(GenericResponse.success(goal, "Savings goal updated successfully"));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Map<String, Object>> delete(@PathVariable Long id) {
-        goalService.delete(currentUserProvider.getCurrentUser(), id);
-        Map<String, Object> body = new HashMap<>();
-        body.put("message", "Goal deleted successfully");
-        return ResponseEntity.ok(body);
+    public ResponseEntity<GenericResponse<Void>> deleteGoal(@PathVariable Long id) {
+        Long userId = currentUserProvider.getCurrentUserId();
+        savingsGoalService.deleteGoal(userId, id);
+        return ResponseEntity.ok(GenericResponse.success("Savings goal deleted successfully"));
     }
 }
